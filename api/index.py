@@ -176,12 +176,14 @@ Do NOT include markdown block markers (like ```json), just the raw JSON object. 
                 tx_hash = f"demo-{int(time.time())}"
         except Exception as e:
             logger.error(f"Gemini Fallback Error: {e}")
+            gemini_err = str(e)
 
     if not raw_response:
+        msg = f"Could not connect to external AIs. Gemini Error: {gemini_err}" if 'gemini_err' in locals() else "Could not connect to external AIs."
         raw_response = json.dumps({
             "signal": "BUY", "strength": "STRONG", "confidence": 85, 
             "target_price": "$70k", "stop_loss": "$60k", 
-            "reasoning_steps": [{"step": "Demo (Fallback)", "icon": "⚠️", "analysis": "Could not connect to external AIs."}]
+            "reasoning_steps": [{"step": "Demo (Fallback)", "icon": "⚠️", "analysis": msg}]
         })
 
     try:
