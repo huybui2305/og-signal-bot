@@ -171,12 +171,16 @@ Do NOT include markdown block markers (like ```json), just the raw JSON object. 
                     }
                 )
                 data = r.json()
-                raw_response = data["candidates"][0]["content"]["parts"][0]["text"]
-                model_used = "gemini-1.5-flash"
-                tx_hash = f"demo-{int(time.time())}"
+                if "candidates" in data:
+                    raw_response = data["candidates"][0]["content"]["parts"][0]["text"]
+                    model_used = "gemini-1.5-flash"
+                    tx_hash = f"demo-{int(time.time())}"
+                else:
+                    gemini_err = "API Error: " + json.dumps(data)
         except Exception as e:
             logger.error(f"Gemini Fallback Error: {e}")
-            gemini_err = str(e)
+            if 'gemini_err' not in locals():
+                gemini_err = str(e)
 
     if not raw_response:
         msg = f"Could not connect to external AIs. Gemini Error: {gemini_err}" if 'gemini_err' in locals() else "Could not connect to external AIs."
