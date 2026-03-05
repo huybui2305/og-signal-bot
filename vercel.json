@@ -1,15 +1,9 @@
 {
-  "version": 2,
-  "builds": [
+  "framework": "fastapi",
+  "rewrites": [
     {
-      "src": "main.py",
-      "use": "@vercel/python"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "main.py"
+      "source": "/(.*)",
+      "destination": "main.py"
     }
   ]
 }

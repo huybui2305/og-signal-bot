@@ -41,20 +41,24 @@ OG_PRIVATE_KEY = os.getenv("OG_PRIVATE_KEY", "")
 OG_EMAIL       = os.getenv("OG_EMAIL", "")
 OG_PASSWORD    = os.getenv("OG_PASSWORD", "")
 
-# Initialize services
-price_service = PriceFeedService(cache_ttl=300)  # 5 min cache
-og_client = None
+# Initialize services (Price feed stays global)
+price_service = PriceFeedService(cache_ttl=300)
+_og_client = None
 
-if OG_PRIVATE_KEY:
-    try:
-        og_client = OGClient(
-            private_key=OG_PRIVATE_KEY,
-            email=OG_EMAIL,
-            password=OG_PASSWORD
-        )
-        logger.info("✅ OpenGradient Client initialized")
-    except Exception as e:
-        logger.error(f"⚠️ OpenGradient Client initialization failed: {e}")
+def get_og_client():
+    """Lazily initialize OG client to avoid cold start timeouts"""
+    global _og_client
+    if _og_client is None and OG_PRIVATE_KEY:
+        try:
+            _og_client = OGClient(
+                private_key=OG_PRIVATE_KEY,
+                email=OG_EMAIL,
+                password=OG_PASSWORD
+            )
+            logger.info("✅ OpenGradient Client initialized lazily")
+        except Exception as e:
+            logger.error(f"⚠️ Lazy OG init failed: {e}")
+    return _og_client
 
 # ─── MODELS ───
 class AnalysisRequest(BaseModel):
@@ -149,20 +153,22 @@ Analyze the data above and respond ONLY with a valid JSON object (no markdown):
 
 @app.get("/")
 def root():
+    client = get_og_client()
     return {
         "app": "OG Signal",
-        "version": "0.2.0 (Optimized)",
-        "og_initialized": og_client is not None,
+        "version": "0.2.1 (Vercel-Optimized)",
+        "og_initialized": client is not None,
         "docs": "https://docs.opengradient.ai/developers/sdk/",
     }
 
 @app.get("/api/health")
 def health():
+    client = get_og_client()
     return {
         "status": "ok",
-        "og_client": "initialized" if og_client else "missing_key",
+        "og_client": "initialized" if client else "waiting_or_failed",
         "network": "Base Sepolia (testnet)",
-        "token": "$OPG (0x240b09731D96979f50B2C649C9CE10FcF9C7987F)",
+        "token": "$OPG",
     }
 
 @app.get("/api/price/{pair}")
@@ -199,8 +205,8 @@ async def analyze(req: AnalysisRequest):
     raw_response = None
 
     # 3. Handle inference (User key or Server key)
-    client_to_use = og_client
-    if req.private_key and (not og_client or req.private_key != OG_PRIVATE_KEY):
+    client_to_use = get_og_client()
+    if req.private_key and (not client_to_use or req.private_key != OG_PRIVATE_KEY):
         try:
             client_to_use = OGClient(private_key=req.private_key, email=OG_EMAIL, password=OG_PASSWORD)
         except Exception as e:
