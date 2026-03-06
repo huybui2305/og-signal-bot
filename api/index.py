@@ -143,21 +143,34 @@ Do NOT include markdown block markers (like ```json), just the raw JSON object. 
     model_used = "demo-mode"
     on_chain = False
 
-    # Chỗ này OpenGradient mới bắt đầu được import vào RAM (Lazy Load)
+    # 1. Primary Analysis: OpenGradient
+    og_error = None
+    start_time = time.time()
+    
     client = get_og_client(req.private_key)
     if client and _og_module:
         try:
             inference_mode = _og_module.LlmInferenceMode.TEE if req.inference_mode == "TEE" else _og_module.LlmInferenceMode.VANILLA
-            tx_hash, _, message = client.llm_chat(
+            tx_hash_og, _, message = client.llm_chat(
                 model_cid=_og_module.LLM.MISTRAL_7B_INSTRUCT_V3,
                 messages=[{"role": "user", "content": prompt}],
                 inference_mode=inference_mode
             )
             raw_response = message.get("content", "")
-            model_used = "og.Mistral-7B"
-            on_chain = True
+            if raw_response:
+                model_used = "og.Mistral-7B"
+                tx_hash = tx_hash_og
+                on_chain = True
+            else:
+                og_error = "OpenGradient returned empty response"
         except Exception as e:
-            logger.error(f"OG Error: {e}")
+            og_error = f"OpenGradient Error: {str(e)}"
+            logger.error(og_error)
+    else:
+        og_error = "OpenGradient Client not initialized (check Private Key or SDK)"
+
+    og_duration = round(time.time() - start_time, 2)
+    logger.info(f"OpenGradient took {og_duration} seconds")
 
     # 2. Fallback Google Gemini
     if not raw_response and GEMINI_KEY:
@@ -185,9 +198,11 @@ Do NOT include markdown block markers (like ```json), just the raw JSON object. 
     if not raw_response:
         msg = f"Could not connect to external AIs. Gemini Error: {gemini_err}" if 'gemini_err' in locals() else "Could not connect to external AIs."
         raw_response = json.dumps({
-            "signal": "BUY", "strength": "STRONG", "confidence": 85, 
             "target_price": "$70k", "stop_loss": "$60k", 
-            "reasoning_steps": [{"step": "Demo (Fallback)", "icon": "⚠️", "analysis": msg}]
+            "reasoning_steps": [
+                {"step": "OpenGradient Analysis", "icon": "❌" if og_error else "✅", "analysis": og_error if og_error else f"Completed in {og_duration}s"},
+                {"step": "Gemini Fallback", "icon": "⚠️", "analysis": msg}
+            ]
         })
 
     try:
