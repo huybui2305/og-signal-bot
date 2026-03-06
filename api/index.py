@@ -127,17 +127,6 @@ async def get_all_prices():
         except:
             return {"BTC/USDC": {"price": 65000, "price_change_24h": 0}}
 
-@app.get("/api/models")
-async def list_gemini_models():
-    if not GEMINI_KEY:
-        return {"error": "GEMINI_API_KEY not configured"}
-    async with httpx.AsyncClient(timeout=10) as client:
-        try:
-            r = await client.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_KEY}")
-            return r.json()
-        except Exception as e:
-            return {"error": str(e)}
-
 @app.post("/api/analyze", response_model=SignalResult)
 async def analyze(req: AnalysisRequest):
     prompt = f"""Analyze {req.pair} for {req.timeframe} timeframe with {req.risk} risk using {req.indicators}.
