@@ -171,11 +171,20 @@ Do NOT include markdown block markers (like ```json), just the raw JSON object. 
     
     if client and _og_module:
         try:
-            inference_mode = _og_module.LlmInferenceMode.TEE if req.inference_mode == "TEE" else _og_module.LlmInferenceMode.VANILLA
+            # Safe attribute access for different SDK versions
+            InfMode = getattr(_og_module, "InferenceMode", getattr(_og_module, "LlmInferenceMode", None))
+            LlmEnum = getattr(_og_module, "LLM", getattr(_og_module, "TEE_LLM", None))
+            
+            if not InfMode:
+                raise AttributeError("Could not find InferenceMode enum in opengradient SDK")
+            
+            inf_val = InfMode.TEE if req.inference_mode == "TEE" else InfMode.VANILLA
+            model_cid = getattr(LlmEnum, "MISTRAL_7B_INSTRUCT_V3", "mistral-7b-instruct-v3") # Default if not found
+
             tx_hash_og, _, message = client.llm_chat(
-                model_cid=_og_module.LLM.MISTRAL_7B_INSTRUCT_V3,
+                model_cid=model_cid,
                 messages=[{"role": "user", "content": prompt}],
-                inference_mode=inference_mode
+                inference_mode=inf_val
             )
             raw_response = message.get("content", "")
             if raw_response:
