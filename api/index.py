@@ -74,6 +74,35 @@ def get_og_client(pk: str = None):
         logger.error(f"OG Client init failed: {e}")
         return None
 
+def get_opg_balance(client):
+    """Fetch OPG balance and address for diagnostics in case of 402 error."""
+    try:
+        # Use existing SDK internals instead of adding new dependencies
+        # This is based on the SDK's use of web3 and its wallet management
+        if not hasattr(client, "llm") or not hasattr(client.llm, "_blockchain"):
+            return "N/A", "N/A"
+        
+        w3 = client.llm._blockchain
+        user_address = client.llm._wallet_account.address
+        
+        # Standard OPG address on Base Sepolia
+        OPG_ADDRESS = "0x240b09731D96979f50B2C649C9CE10FcF9C7987F"
+        
+        abi = [
+            {"constant": True, "inputs": [{"name": "_owner", "type": "address"}], "name": "balanceOf", "outputs": [{"name": "balance", "type": "uint256"}], "type": "function"},
+            {"constant": True, "inputs": [], "name": "decimals", "outputs": [{"name": "", "type": "uint8"}], "type": "function"}
+        ]
+        
+        contract = w3.eth.contract(address=OPG_ADDRESS, abi=abi)
+        bal_wei = contract.functions.balanceOf(user_address).call()
+        decimals = contract.functions.decimals().call()
+        balance = bal_wei / (10 ** decimals)
+        
+        return user_address, f"{balance:.4f} OPG"
+    except Exception as e:
+        logger.warning(f"Could not fetch OPG balance: {e}")
+        return "Unknown", "Error"
+
 # ─── MODELS ───
 class AnalysisRequest(BaseModel):
     pair: str = "BTC/USDC"
@@ -210,7 +239,12 @@ Do NOT include markdown block markers (like ```json), just the raw JSON object. 
             else:
                 og_error = "OpenGradient returned empty response (Check $OPG balance)"
         except Exception as e:
-            og_error = f"OpenGradient API Error: {str(e)}"
+            err_msg = str(e)
+            if "402" in err_msg or "Payment Required" in err_msg:
+                addr, bal = get_opg_balance(client)
+                og_error = f"402 Payment Required: Wallet {addr} has only {bal}. Please fund it at faucet.opengradient.ai"
+            else:
+                og_error = f"OpenGradient API Error: {err_msg}"
             logger.error(og_error)
 
     # Use a safe rounding or float formatting
