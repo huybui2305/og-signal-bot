@@ -171,25 +171,41 @@ Do NOT include markdown block markers (like ```json), just the raw JSON object. 
     
     if client and _og_module:
         try:
-            # Safe attribute access for different SDK versions
-            InfMode = getattr(_og_module, "InferenceMode", getattr(_og_module, "LlmInferenceMode", None))
-            LlmEnum = getattr(_og_module, "LLM", getattr(_og_module, "TEE_LLM", None))
-            
-            if not InfMode:
-                raise AttributeError("Could not find InferenceMode enum in opengradient SDK")
-            
-            inf_val = InfMode.TEE if req.inference_mode == "TEE" else InfMode.VANILLA
-            model_cid = getattr(LlmEnum, "MISTRAL_7B_INSTRUCT_V3", "mistral-7b-instruct-v3") # Default if not found
+            # 1.1 Ensure OPG approval (one-time logic, but safe to call if SDK handles it)
+            try:
+                if hasattr(client, "llm") and hasattr(client.llm, "ensure_opg_approval"):
+                    client.llm.ensure_opg_approval(opg_amount=1)
+            except Exception as e:
+                logger.warning(f"OPG Approval check failed: {e}")
 
-            tx_hash_og, _, message = client.llm_chat(
-                model_cid=model_cid,
+            # 1.2 Determine Model and Mode
+            # Using latest SDK namespaces: client.llm.chat
+            TEE_LLM = getattr(_og_module, "TEE_LLM", None)
+            SettlementMode = getattr(_og_module, "x402SettlementMode", None)
+            
+            if not TEE_LLM or not SettlementMode:
+                raise AttributeError("Missing TEE_LLM or x402SettlementMode in SDK")
+
+            model_cid = TEE_LLM.GEMINI_2_5_FLASH # Preferred verifiable model
+            settlement_mode = SettlementMode.SETTLE_METADATA # Verifiable metadata settlement
+            
+            # 1.3 Call LLM
+            # The new SDK uses client.llm.chat
+            result_og = client.llm.chat(
+                model=model_cid,
                 messages=[{"role": "user", "content": prompt}],
-                inference_mode=inf_val
+                x402_settlement_mode=settlement_mode
             )
-            raw_response = message.get("content", "")
+            
+            # 1.4 Parse Response
+            # result_og is usually an object with chat_output and transaction attributes
+            raw_response = ""
+            if hasattr(result_og, "chat_output") and "content" in result_og.chat_output:
+                raw_response = result_og.chat_output["content"]
+                tx_hash = getattr(result_og, "transaction_hash", "")
+            
             if raw_response:
-                model_used = "og.Mistral-7B"
-                tx_hash = tx_hash_og
+                model_used = "og.Gemini-2.5"
                 on_chain = True
             else:
                 og_error = "OpenGradient returned empty response (Check $OPG balance)"
