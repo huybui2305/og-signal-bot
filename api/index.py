@@ -164,7 +164,7 @@ Do NOT include markdown block markers (like ```json), just the raw JSON object. 
         try:
             async with httpx.AsyncClient(timeout=30) as c:
                 r = await c.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}", 
+                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.0-pro:generateContent?key={GEMINI_KEY}", 
                     headers={"Content-Type": "application/json"},
                     json={"contents": [{"parts":[{"text": prompt}]}]}
                 )
@@ -172,7 +172,7 @@ Do NOT include markdown block markers (like ```json), just the raw JSON object. 
                     data = r.json()
                     if "candidates" in data:
                         raw_response = data["candidates"][0]["content"]["parts"][0]["text"]
-                        model_used = "gemini-1.5-flash"
+                        model_used = "gemini-1.0-pro"
                         tx_hash = f"demo-{int(time.time())}"
                     else:
                         gemini_err = "No candidates in response: " + r.text
