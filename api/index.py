@@ -35,10 +35,6 @@ _og_available = None
 _og_module = None
 
 def get_og_client(pk: str = None):
-    """
-    LAZY IMPORT: Vercel functions crash (500) if initialization takes >10s.
-    We import 'opengradient' only when absolutely necessary (e.g., inside the analyze route).
-    """
     global _og_client, _og_available, _og_module
     
     if _og_available is None:
@@ -46,25 +42,37 @@ def get_og_client(pk: str = None):
             import opengradient as og
             _og_module = og
             _og_available = True
-            logger.info("OpenGradient imported lazily.")
+            logger.info("OpenGradient imported.")
         except ImportError:
             _og_available = False
-            logger.warning("OpenGradient could not be imported.")
+            logger.warning("OpenGradient SDK not found.")
 
-    if pk and _og_available:
-        try:
-            return _og_module.Client(private_key=pk, email=OG_EMAIL, password=OG_PASSWORD)
-        except Exception as e: 
-            logger.error(f"User OG Client init failed: {e}")
-            return None
-            
-    if _og_client is None and _og_available and OG_PRIVATE_KEY:
-        try:
-            _og_client = _og_module.Client(private_key=OG_PRIVATE_KEY, email=OG_EMAIL, password=OG_PASSWORD)
-        except Exception as e: 
-            logger.error(f"Global OG Client init failed: {e}")
-            
-    return _og_client
+    if not _og_available:
+        return None
+
+    # Determine which key to use
+    active_pk = pk if pk else OG_PRIVATE_KEY
+    if not active_pk:
+        return None
+
+    # For global client, cache it
+    if not pk and _og_client:
+        return _og_client
+
+    try:
+        # Initialize with only what's available
+        kwargs = {"private_key": active_pk}
+        if OG_EMAIL: kwargs["email"] = OG_EMAIL
+        if OG_PASSWORD: kwargs["password"] = OG_PASSWORD
+        
+        client = _og_module.Client(**kwargs)
+        
+        if not pk: # Cache global client
+            _og_client = client
+        return client
+    except Exception as e: 
+        logger.error(f"OG Client init failed: {e}")
+        return None
 
 # ─── MODELS ───
 class AnalysisRequest(BaseModel):
@@ -147,15 +155,19 @@ Do NOT include markdown block markers (like ```json), just the raw JSON object. 
     og_error = None
     start_time = time.time()
     
-    # Kiểm tra xem SDK có sẵn không
+    # Check if SDK is available
     client = get_og_client(req.private_key)
     if not _og_available:
         og_error = "OpenGradient SDK not found in environment (check requirements.txt)"
     elif not client:
-        if not req.private_key and not OG_PRIVATE_KEY:
-            og_error = "OpenGradient Private Key not found. Please enter it in the sidebar or set OG_PRIVATE_KEY in Vercel Env."
-        else:
-            og_error = "OpenGradient Client failed to initialize. Check if your Private Key is valid and has $OPG tokens."
+        # Detailed feedback on why initialization failed
+        has_server_key = bool(OG_PRIVATE_KEY)
+        has_user_key = bool(req.private_key)
+        
+        if not has_user_key and not has_server_key:
+            og_error = "No Private Key found (Server Key is missing in Vercel Env AND Sidebar is empty)."
+        elif has_user_key or has_server_key:
+            og_error = f"Client init failed. (Server Key: {'Yes' if has_server_key else 'No'}, User Key: {'Yes' if has_user_key else 'No'}). Please check Key validity and $OPG balance."
     
     if client and _og_module:
         try:
@@ -171,12 +183,13 @@ Do NOT include markdown block markers (like ```json), just the raw JSON object. 
                 tx_hash = tx_hash_og
                 on_chain = True
             else:
-                og_error = "OpenGradient returned empty response"
+                og_error = "OpenGradient returned empty response (Check $OPG balance)"
         except Exception as e:
             og_error = f"OpenGradient API Error: {str(e)}"
             logger.error(og_error)
 
-    og_duration = round(time.time() - start_time, 2)
+    # Use a safe rounding or float formatting
+    og_duration = float(f"{(time.time() - start_time):.2f}")
     logger.info(f"OpenGradient took {og_duration} seconds")
 
     # 2. Fallback Google Gemini
