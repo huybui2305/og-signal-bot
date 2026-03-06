@@ -74,16 +74,23 @@ def get_og_client(pk: str = None):
         logger.error(f"OG Client init failed: {e}")
         return None
 
-def get_opg_balance(client):
-    """Fetch OPG balance and address for diagnostics in case of 402 error."""
+def get_opg_balance(pk: str):
+    """Fetch OPG balance and address using standard Web3 to bypass SDK internal shifts."""
     try:
-        # Use existing SDK internals instead of adding new dependencies
-        # This is based on the SDK's use of web3 and its wallet management
-        if not hasattr(client, "llm") or not hasattr(client.llm, "_blockchain"):
-            return "N/A", "N/A"
+        from eth_account import Account
+        from web3 import Web3
         
-        w3 = client.llm._blockchain
-        user_address = client.llm._wallet_account.address
+        # 1. Derive Address from Private Key
+        if not pk: return "N/A", "N/A"
+        try:
+            account = Account.from_key(pk)
+            user_address = account.address
+        except:
+            return "Invalid Key", "N/A"
+        
+        # 2. Setup Web3 (Base Sepolia)
+        RPC_URL = "https://sepolia.base.org"
+        w3 = Web3(Web3.HTTPProvider(RPC_URL))
         
         # Standard OPG address on Base Sepolia
         OPG_ADDRESS = "0x240b09731D96979f50B2C649C9CE10FcF9C7987F"
@@ -93,15 +100,15 @@ def get_opg_balance(client):
             {"constant": True, "inputs": [], "name": "decimals", "outputs": [{"name": "", "type": "uint8"}], "type": "function"}
         ]
         
-        contract = w3.eth.contract(address=OPG_ADDRESS, abi=abi)
+        contract = w3.eth.contract(address=Web3.to_checksum_address(OPG_ADDRESS), abi=abi)
         bal_wei = contract.functions.balanceOf(user_address).call()
         decimals = contract.functions.decimals().call()
         balance = bal_wei / (10 ** decimals)
         
         return user_address, f"{balance:.4f} OPG"
     except Exception as e:
-        logger.warning(f"Could not fetch OPG balance: {e}")
-        return "Unknown", "Error"
+        logger.warning(f"Robust balance check failed: {e}")
+        return "Unknown", f"Err: {str(e)[:50]}"
 
 # ─── MODELS ───
 class AnalysisRequest(BaseModel):
@@ -241,7 +248,8 @@ Do NOT include markdown block markers (like ```json), just the raw JSON object. 
         except Exception as e:
             err_msg = str(e)
             if "402" in err_msg or "Payment Required" in err_msg:
-                addr, bal = get_opg_balance(client)
+                active_pk = req.private_key if req.private_key else OG_PRIVATE_KEY
+                addr, bal = get_opg_balance(active_pk)
                 og_error = f"402 Payment Required: Wallet {addr} has only {bal}. Please fund it at faucet.opengradient.ai"
             else:
                 og_error = f"OpenGradient API Error: {err_msg}"

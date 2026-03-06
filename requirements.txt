@@ -5,3 +5,5 @@ pydantic
 python-dotenv
 opengradient
 aiofiles
+web3
+eth-account
