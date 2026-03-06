@@ -136,6 +136,8 @@ class SignalResult(BaseModel):
     inference_mode: str
     wallet_address: str = "N/A"
     using_user_key: bool = False
+    timestamp: str
+    on_chain_verified: bool
 
 @app.get("/api/balance/{address}")
 async def get_balance_api(address: str):
@@ -153,8 +155,6 @@ async def get_balance_api(address: str):
         return {"address": address, "balance": balance, "formatted": f"{balance:.4f} OPG"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    timestamp: str
-    on_chain_verified: bool
 
 # ─── API ROUTES ───
 @app.get("/")
