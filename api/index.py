@@ -147,7 +147,16 @@ Do NOT include markdown block markers (like ```json), just the raw JSON object. 
     og_error = None
     start_time = time.time()
     
+    # Kiểm tra xem SDK có sẵn không
     client = get_og_client(req.private_key)
+    if not _og_available:
+        og_error = "OpenGradient SDK not found in environment (check requirements.txt)"
+    elif not client:
+        if not req.private_key and not OG_PRIVATE_KEY:
+            og_error = "OpenGradient Private Key not found. Please enter it in the sidebar or set OG_PRIVATE_KEY in Vercel Env."
+        else:
+            og_error = "OpenGradient Client failed to initialize. Check if your Private Key is valid and has $OPG tokens."
+    
     if client and _og_module:
         try:
             inference_mode = _og_module.LlmInferenceMode.TEE if req.inference_mode == "TEE" else _og_module.LlmInferenceMode.VANILLA
@@ -164,10 +173,8 @@ Do NOT include markdown block markers (like ```json), just the raw JSON object. 
             else:
                 og_error = "OpenGradient returned empty response"
         except Exception as e:
-            og_error = f"OpenGradient Error: {str(e)}"
+            og_error = f"OpenGradient API Error: {str(e)}"
             logger.error(og_error)
-    else:
-        og_error = "OpenGradient Client not initialized (check Private Key or SDK)"
 
     og_duration = round(time.time() - start_time, 2)
     logger.info(f"OpenGradient took {og_duration} seconds")
@@ -216,11 +223,14 @@ Do NOT include markdown block markers (like ```json), just the raw JSON object. 
         result = {"signal": "HOLD", "strength": "STABLE", "confidence": 70, "target_price": "$0", "stop_loss": "$0", "reasoning_steps": []}
 
     final_reasoning = result.get("reasoning_steps", [])
+    if not isinstance(final_reasoning, list):
+        final_reasoning = [{"step": "Analysis Details", "icon": "📝", "analysis": str(final_reasoning)}]
+        
     # Chèn trạng thái OpenGradient vào đầu danh sách để người dùng biết tình trạng
     og_status_step = {
         "step": "OpenGradient Analysis", 
         "icon": "❌" if og_error else "✅", 
-        "analysis": og_error if og_error else f"Completed in {og_duration}s"
+        "analysis": og_error if og_error else f"Completed successfully in {og_duration}s"
     }
     final_reasoning.insert(0, og_status_step)
 
