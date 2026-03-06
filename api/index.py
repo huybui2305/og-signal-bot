@@ -164,24 +164,24 @@ Do NOT include markdown block markers (like ```json), just the raw JSON object. 
         try:
             async with httpx.AsyncClient(timeout=30) as c:
                 r = await c.post(
-                    f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}", 
+                    f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}", 
                     headers={"Content-Type": "application/json"},
-                    json={
-                        "contents": [{"parts":[{"text": prompt}]}]
-                    }
+                    json={"contents": [{"parts":[{"text": prompt}]}]}
                 )
-                data = r.json()
-                if "candidates" in data:
-                    raw_response = data["candidates"][0]["content"]["parts"][0]["text"]
-                    model_used = "gemini-1.5-flash"
-                    tx_hash = f"demo-{int(time.time())}"
+                if r.status_code == 200:
+                    data = r.json()
+                    if "candidates" in data:
+                        raw_response = data["candidates"][0]["content"]["parts"][0]["text"]
+                        model_used = "gemini-1.5-flash"
+                        tx_hash = f"demo-{int(time.time())}"
+                    else:
+                        gemini_err = "No candidates in response: " + r.text
                 else:
-                    gemini_err = "API Error: " + json.dumps(data)
+                    gemini_err = f"API Error {r.status_code}: {r.text}"
         except Exception as e:
             logger.error(f"Gemini Fallback Error: {e}")
             if 'gemini_err' not in locals():
                 gemini_err = str(e)
-
     if not raw_response:
         msg = f"Could not connect to external AIs. Gemini Error: {gemini_err}" if 'gemini_err' in locals() else "Could not connect to external AIs."
         raw_response = json.dumps({
