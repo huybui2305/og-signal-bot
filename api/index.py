@@ -215,13 +215,22 @@ Do NOT include markdown block markers (like ```json), just the raw JSON object. 
     except:
         result = {"signal": "HOLD", "strength": "STABLE", "confidence": 70, "target_price": "$0", "stop_loss": "$0", "reasoning_steps": []}
 
+    final_reasoning = result.get("reasoning_steps", [])
+    # Chèn trạng thái OpenGradient vào đầu danh sách để người dùng biết tình trạng
+    og_status_step = {
+        "step": "OpenGradient Analysis", 
+        "icon": "❌" if og_error else "✅", 
+        "analysis": og_error if og_error else f"Completed in {og_duration}s"
+    }
+    final_reasoning.insert(0, og_status_step)
+
     return SignalResult(
         signal=result.get("signal", "HOLD"),
         strength=result.get("strength", "HOLD"),
         confidence=result.get("confidence", 70),
         target=result.get("target_price", "N/A"),
         stop_loss=result.get("stop_loss", "N/A"),
-        reasoning=result.get("reasoning_steps", []),
+        reasoning=final_reasoning,
         tx_hash=tx_hash,
         model_used=model_used,
         inference_mode=req.inference_mode if on_chain else "demo",
