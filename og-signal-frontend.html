@@ -1540,15 +1540,19 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label">Wallet Private Key</label>
+            <label class="form-label">AI Execution Key (OPG Wallet)</label>
             <div class="key-input-wrap">
-              <input type="password" class="form-input" id="cfgKey" placeholder="0x... (Base Sepolia)"
-                autocomplete="off">
+              <input type="password" class="form-input" id="cfgKey" placeholder="0x... Private Key" autocomplete="off"
+                oninput="debounceBalanceCheck()">
               <button class="key-eye" onclick="toggleKeyVis()">👁</button>
             </div>
+            <div id="setupBalance"
+              style="font-family:'DM Mono',monospace;font-size:9px;color:var(--cyan2);margin-top:4px;display:none;">
+              Balance: <span id="opgVal">0.0000</span> OPG
+            </div>
             <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--text2);margin-top:4px;">
-              Needs $OPG tokens · <a href="https://faucet.opengradient.ai" target="_blank"
-                style="color:var(--cyan);text-decoration:none;">Get from faucet ↗</a>
+              Signs on-chain inference · <a href="https://faucet.opengradient.ai" target="_blank"
+                style="color:var(--cyan);text-decoration:none;">Get $OPG faucet ↗</a>
             </div>
           </div>
 
@@ -1716,6 +1720,7 @@
               const addr = accounts[0];
               document.getElementById('walletAddr').innerHTML = `🟢 ${addr.slice(0, 6)}...${addr.slice(-4)}`;
               showToast('Wallet connected', 'success');
+              updateBalanceDisplay(addr);
             }
           } catch (e) {
             showToast('Connection failed', 'error');
@@ -1724,6 +1729,36 @@
           showToast('No wallet found. Please install MetaMask.', 'error');
           openModal('setup');
         }
+      }
+
+      async function updateBalanceDisplay(addr) {
+        if (!addr) return;
+        try {
+          const r = await fetch(`/api/balance/${addr}`);
+          if (r.ok) {
+            const data = await r.json();
+            const el = document.getElementById('setupBalance');
+            if (el) {
+              el.style.display = 'block';
+              document.getElementById('opgVal').textContent = data.balance.toFixed(4);
+            }
+          }
+        } catch (e) {
+          console.warn("Balance check failed", e);
+        }
+      }
+
+      let balanceTimer = null;
+      function debounceBalanceCheck() {
+        clearTimeout(balanceTimer);
+        balanceTimer = setTimeout(async () => {
+          const pk = document.getElementById('cfgKey').value;
+          if (pk && pk.length >= 64) {
+            // In a real app, we'd derive the address locally to be safe.
+            // Here we'll just wait for the analysis error to show it, 
+            // or we could add a "Check" button.
+          }
+        }, 1000);
       }
 
       // ═══════════════════════════════════════════
@@ -2132,6 +2167,8 @@
           ['Mode', r.inference_mode, false],
           ['Network', 'Base Sepolia', false],
           ['Timestamp', r.timestamp ? r.timestamp.slice(0, 19).replace('T', ' ') + ' UTC' : '—', false],
+          ['Execution Wallet', r.wallet_address || 'N/A', r.using_user_key],
+          ['Wallet Type', r.using_user_key ? 'PERSONAL ✓' : 'APP DEMO ⬡', r.using_user_key],
           ['Verified', r.on_chain_verified ? 'YES ✓' : 'NO (demo)', r.on_chain_verified],
         ];
         return `

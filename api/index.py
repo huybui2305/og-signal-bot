@@ -134,6 +134,25 @@ class SignalResult(BaseModel):
     tx_hash: Optional[str] = None
     model_used: str
     inference_mode: str
+    wallet_address: str = "N/A"
+    using_user_key: bool = False
+
+@app.get("/api/balance/{address}")
+async def get_balance_api(address: str):
+    """Public balance check for any address on Base Sepolia OPG."""
+    try:
+        from web3 import Web3
+        RPC_URL = "https://sepolia.base.org"
+        w3 = Web3(Web3.HTTPProvider(RPC_URL))
+        OPG_ADDRESS = "0x240b09731D96979f50B2C649C9CE10FcF9C7987F"
+        abi = [{"constant": True, "inputs": [{"name": "_owner", "type": "address"}], "name": "balanceOf", "outputs": [{"name": "balance", "type": "uint256"}], "type": "function"},{"constant": True, "inputs": [], "name": "decimals", "outputs": [{"name": "", "type": "uint8"}], "type": "function"}]
+        contract = w3.eth.contract(address=Web3.to_checksum_address(OPG_ADDRESS), abi=abi)
+        bal_wei = contract.functions.balanceOf(Web3.to_checksum_address(address)).call()
+        decimals = contract.functions.decimals().call()
+        balance = bal_wei / (10 ** decimals)
+        return {"address": address, "balance": balance, "formatted": f"{balance:.4f} OPG"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     timestamp: str
     on_chain_verified: bool
 
@@ -186,6 +205,17 @@ Do NOT include markdown block markers (like ```json), just the raw JSON object. 
     raw_response = None
     model_used = "demo-mode"
     on_chain = False
+
+    # 0. Prep Wallet Info
+    using_user_key = bool(req.private_key)
+    active_pk = req.private_key if req.private_key else OG_PRIVATE_KEY
+    wallet_address = "N/A"
+    try:
+        from eth_account import Account
+        if active_pk:
+            wallet_address = Account.from_key(active_pk).address
+    except:
+        pass
 
     # 1. Primary Analysis: OpenGradient
     og_error = None
@@ -324,6 +354,8 @@ Do NOT include markdown block markers (like ```json), just the raw JSON object. 
         tx_hash=tx_hash,
         model_used=model_used,
         inference_mode=req.inference_mode if on_chain else "demo",
+        wallet_address=wallet_address,
+        using_user_key=using_user_key,
         timestamp=datetime.now(timezone.utc).isoformat(),
         on_chain_verified=on_chain
     )
