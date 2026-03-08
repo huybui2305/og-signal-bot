@@ -2079,16 +2079,13 @@
         const errBanner = document.getElementById('sidebarError');
         errBanner.style.display = 'none';
 
-        btn.disabled = true;
-        btn.innerHTML = '⚡ &nbsp;AI Processing...';
-
         const payload = {
           pair: currentPair,
           timeframe: document.getElementById('cfgTf').value,
           risk: document.getElementById('cfgRisk').value,
           indicators: document.getElementById('cfgInd').value,
           inference_mode: currentMode,
-          private_key: document.getElementById('cfgKey').value || undefined,
+          private_key: undefined, // Pure Web3 mode uses MetaMask
         };
 
         // Clear reasoning pane
@@ -2107,8 +2104,10 @@
         switchTab(document.querySelector('.rp-tab'), 'reasoning');
 
         try {
-          let result;
+          btn.disabled = true;
+          btn.innerHTML = '⚡ &nbsp;AI Processing...';
 
+          let result;
           if (userAddress && window.ethereum) {
             // New Pure Web3 Flow: Chat directly with OpenGradient
             const ogPrompt = `Analyze the ${currentPair} trading pair for a ${payload.timeframe} timeframe with ${payload.risk} risk tolerance. Indicators: ${payload.indicators}. Provide a detailed JSON response for buy/sell/stable.`;
@@ -2131,7 +2130,6 @@
             const ogData = await ogResponse.json();
             const rawContent = ogData.choices[0].message.content;
 
-            // Send raw content to backend for final formatting/parsing (safe fallback)
             const r = await fetch(`/api/analyze`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -2139,7 +2137,6 @@
             });
             result = await r.json();
           } else {
-            // Legacy/Demo fallback
             const r = await fetch(`/api/analyze`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -2165,10 +2162,10 @@
         <span style="color:var(--text2);">Ensure MetaMask is connected to <b>Base Sepolia</b> and contains <b>$OPG</b> tokens.</span>
       </div>
     `;
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = '⚡ &nbsp;Run AI Analysis';
         }
-
-        btn.disabled = false;
-        btn.innerHTML = '⚡ &nbsp;Run AI Analysis';
       }
 
       function renderResult(r) {
@@ -2343,10 +2340,6 @@
         });
       }
 
-      function toggleKeyVis() {
-        const inp = document.getElementById('cfgKey');
-        inp.type = inp.type === 'password' ? 'text' : 'password';
-      }
 
       function openModal(id) {
         if (id === 'config') {
