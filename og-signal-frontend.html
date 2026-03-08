@@ -2080,7 +2080,7 @@
         errBanner.style.display = 'none';
 
         btn.disabled = true;
-        btn.innerHTML = '⬡ &nbsp;<span class="spinner"><span></span><span></span><span></span></span>';
+        btn.innerHTML = '⚡ &nbsp;AI Processing...';
 
         const payload = {
           pair: currentPair,
@@ -2111,7 +2111,7 @@
 
           if (userAddress && window.ethereum) {
             // New Pure Web3 Flow: Chat directly with OpenGradient
-            const ogPrompt = `Analyze the ${currentPair} trading pair for a ${payload.timeframe} timeframe with ${payload.risk} risk tolerance. Indicators: ${payload.indicators.join(', ')}. Provide a detailed JSON response for buy/sell/stable.`;
+            const ogPrompt = `Analyze the ${currentPair} trading pair for a ${payload.timeframe} timeframe with ${payload.risk} risk tolerance. Indicators: ${payload.indicators}. Provide a detailed JSON response for buy/sell/stable.`;
 
             const ogResponse = await fetchWithX402('https://inference.opengradient.ai/v1/chat/completions', {
               method: 'POST',
@@ -2154,19 +2154,21 @@
           showToast('✅ Analysis complete · ' + (result.on_chain_verified ? 'On-chain verified' : 'Demo mode'), result.on_chain_verified ? 'success' : 'info');
 
         } catch (e) {
+          console.error("Analysis Error:", e);
           errBanner.style.display = 'block';
-          errBanner.textContent = `⚠️ ${e.message}`;
+          errBanner.textContent = `⚠️ Error: ${e.message}`;
           showToast('❌ ' + e.message, 'error');
           document.getElementById('tab-reasoning').innerHTML = `
       <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--red);padding:12px;background:rgba(255,69,96,0.05);border:1px solid rgba(255,69,96,0.15);border-radius:8px;">
-        ⚠️ ${e.message}<br><br>
-        <span style="color:var(--text2);">Ensure your MetaMask is on Base Sepolia and you have $OPG tokens.</span>
+        ⚠️ <b>Processing Error</b><br><br>
+        ${e.message}<br><br>
+        <span style="color:var(--text2);">Ensure MetaMask is connected to <b>Base Sepolia</b> and contains <b>$OPG</b> tokens.</span>
       </div>
     `;
         }
 
         btn.disabled = false;
-        btn.innerHTML = '⬡ &nbsp;Run OpenGradient Analysis';
+        btn.innerHTML = '⚡ &nbsp;Run AI Analysis';
       }
 
       function renderResult(r) {
