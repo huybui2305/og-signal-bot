@@ -2108,35 +2108,45 @@
           btn.innerHTML = '⚡ &nbsp;AI Processing...';
 
           let result;
+          let ogSuccess = false;
+
           if (userAddress && window.ethereum) {
-            // New Pure Web3 Flow: Chat directly with OpenGradient
-            const ogPrompt = `Analyze the ${currentPair} trading pair for a ${payload.timeframe} timeframe with ${payload.risk} risk tolerance. Indicators: ${payload.indicators}. Provide a detailed JSON response for buy/sell/stable.`;
+            try {
+              // New Pure Web3 Flow: Chat directly with OpenGradient
+              const ogPrompt = `Analyze the ${currentPair} trading pair for a ${payload.timeframe} timeframe with ${payload.risk} risk tolerance. Indicators: ${payload.indicators}. Provide a detailed JSON response for buy/sell/stable.`;
 
-            const ogResponse = await fetchWithX402('https://inference.opengradient.ai/v1/chat/completions', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                model: 'models/gemini-1.5-flash', // Default TEE model
-                messages: [{ role: 'user', content: ogPrompt }],
-                temperature: 0.1
-              })
-            });
+              const ogResponse = await fetchWithX402('https://inference.opengradient.ai/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  model: 'models/gemini-1.5-flash', // Default TEE model
+                  messages: [{ role: 'user', content: ogPrompt }],
+                  temperature: 0.1
+                })
+              });
 
-            if (!ogResponse.ok) {
-              const err = await ogResponse.json().catch(() => ({}));
-              throw new Error(err.error?.message || `OG Error ${ogResponse.status}`);
+              if (!ogResponse.ok) {
+                const err = await ogResponse.json().catch(() => ({}));
+                throw new Error(err.error?.message || `OG Error ${ogResponse.status}`);
+              }
+
+              const ogData = await ogResponse.json();
+              const rawContent = ogData.choices[0].message.content;
+
+              const r = await fetch(`/api/analyze`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...payload, raw_content: rawContent, user_address: userAddress }),
+              });
+              result = await r.json();
+              ogSuccess = true;
+            } catch (ogErr) {
+              console.warn("Pure Web3 AI failed, falling back to Gemini:", ogErr);
+              showToast('⚠️ Web3 AI failed. Using Demo Mode.', 'info');
             }
+          }
 
-            const ogData = await ogResponse.json();
-            const rawContent = ogData.choices[0].message.content;
-
-            const r = await fetch(`/api/analyze`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ ...payload, raw_content: rawContent, user_address: userAddress }),
-            });
-            result = await r.json();
-          } else {
+          if (!ogSuccess) {
             const r = await fetch(`/api/analyze`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
