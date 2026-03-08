@@ -50,26 +50,22 @@ def get_og_client(pk: str = None):
     if not _og_available:
         return None
 
-    # Determine which key to use
-    active_pk = pk if pk else OG_PRIVATE_KEY
-    if not active_pk:
+    # Determine which key to use - Strict mode: No fallback to admin wallet
+    if not pk:
         return None
-
-    # For global client, cache it
-    if not pk and _og_client:
-        return _og_client
-
+    active_pk = pk
+    
+    # We don't cache per-user clients to avoid memory issues and key exposure
     try:
-        # Initialize with only what's available
+        # Initialize with provided primary key
         kwargs = {"private_key": active_pk}
-        if OG_EMAIL: kwargs["email"] = OG_EMAIL
-        if OG_PASSWORD: kwargs["password"] = OG_PASSWORD
+        # Email/Pass are usually for admin features, skip for individual user keys
         
         client = _og_module.Client(**kwargs)
-        
-        if not pk: # Cache global client
-            _og_client = client
         return client
+    except Exception as e: 
+        logger.error(f"OG Client init failed: {e}")
+        return None
     except Exception as e: 
         logger.error(f"OG Client init failed: {e}")
         return None
@@ -208,14 +204,16 @@ Do NOT include markdown block markers (like ```json), just the raw JSON object. 
 
     # 0. Prep Wallet Info
     using_user_key = bool(req.private_key)
-    active_pk = req.private_key if req.private_key else OG_PRIVATE_KEY
+    # Strict mode: No admin fallback
+    active_pk = req.private_key
     wallet_address = "N/A"
-    try:
-        from eth_account import Account
-        if active_pk:
+    
+    if active_pk:
+        try:
+            from eth_account import Account
             wallet_address = Account.from_key(active_pk).address
-    except:
-        pass
+        except:
+            pass
 
     # 1. Primary Analysis: OpenGradient
     og_error = None
