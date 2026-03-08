@@ -1539,21 +1539,14 @@
             </div>
           </div>
 
-          <div class="form-group">
-            <label class="form-label">AI Execution Key (OPG Wallet)</label>
-            <div class="key-input-wrap">
-              <input type="password" class="form-input" id="cfgKey" placeholder="0x... Private Key" autocomplete="off"
-                oninput="debounceBalanceCheck()">
-              <button class="key-eye" onclick="toggleKeyVis()">👁</button>
-            </div>
+          <div class="form-group" id="web3-status-area">
+            <label class="form-label">Wallet Connectivity</label>
             <div id="setupBalance"
-              style="font-family:'DM Mono',monospace;font-size:9px;color:var(--cyan2);margin-top:4px;display:none;">
-              Balance: <span id="opgVal">0.0000</span> OPG
+              style="font-family:'DM Mono',monospace;font-size:10px;color:var(--cyan2);margin-top:4px; border-left: 2px solid var(--cyan); padding-left: 8px;">
+              Status: <span id="opgVal">Not Connected</span><br>
+              <div style="color:var(--text2);margin-top:2px;">AI analysis is powered by your linked wallet.</div>
             </div>
-            <div
-              style="font-family:'DM Mono',monospace;font-size:9px;color:var(--text2);margin-top:4px;border-left:2px solid var(--cyan);padding-left:6px;">
-              User-Funded Model: Verifiable AI requires your own $OPG tokens. No admin wallet fallback.
-              <br>
+            <div style="font-family:'DM Mono',monospace;font-size:9px;color:var(--text2);margin-top:8px;">
               <a href="https://faucet.opengradient.ai" target="_blank"
                 style="color:var(--cyan);text-decoration:none;font-weight:bold;">Get $OPG Faucet ↗</a>
             </div>
@@ -1751,17 +1744,66 @@
         }
       }
 
-      let balanceTimer = null;
-      function debounceBalanceCheck() {
-        clearTimeout(balanceTimer);
-        balanceTimer = setTimeout(async () => {
-          const pk = document.getElementById('cfgKey').value;
-          if (pk && pk.length >= 64) {
-            // In a real app, we'd derive the address locally to be safe.
-            // Here we'll just wait for the analysis error to show it, 
-            // or we could add a "Check" button.
+      // ═══════════════════════════════════════════
+      // OpenGradient x402 Web3 Signer
+      // ═══════════════════════════════════════════
+      const OG_DOMAIN = {
+        name: 'USDC',
+        version: '2',
+        chainId: 84532,
+        verifyingContract: '0x036CbD53842c5426634e7929541eC2318f3dCF7e'
+      };
+      const OG_TYPES = {
+        TransferWithAuthorization: [
+          { name: 'from', type: 'address' },
+          { name: 'to', type: 'address' },
+          { name: 'value', type: 'uint256' },
+          { name: 'validAfter', type: 'uint256' },
+          { name: 'validBefore', type: 'uint256' },
+          { name: 'nonce', type: 'bytes32' }
+        ]
+      };
+
+      async function fetchWithX402(url, options) {
+        let r = await fetch(url, options);
+        if (r.status === 402) {
+          const challengeRaw = r.headers.get('payment-required');
+          if (!challengeRaw) throw new Error('402 Payment Required but no challenge found');
+
+          let challenge;
+          try {
+            challenge = JSON.parse(atob(challengeRaw));
+          } catch (e) {
+            throw new Error('Failed to parse payment challenge');
           }
-        }, 1000);
+
+          const { payee, value, nonce: serverNonce } = challenge;
+          const nonce = serverNonce || ('0x' + Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2, '0')).join(''));
+          const validAfter = 0;
+          const validBefore = Math.floor(Date.now() / 1000) + 3600;
+
+          showToast('🔐 Payment Required: Please sign in MetaMask', 'info');
+
+          const signature = await window.ethereum.request({
+            method: 'eth_signTypedData_v4',
+            params: [userAddress, JSON.stringify({
+              domain: OG_DOMAIN,
+              types: OG_TYPES,
+              primaryType: 'TransferWithAuthorization',
+              message: { from: userAddress, to: payee, value, validAfter, validBefore, nonce }
+            })]
+          });
+
+          const paymentPayload = btoa(JSON.stringify({
+            from: userAddress, to: payee, value, validAfter, validBefore, nonce, signature
+          }));
+
+          return fetch(url, {
+            ...options,
+            headers: { ...options.headers, 'X-PAYMENT': paymentPayload }
+          });
+        }
+        return r;
       }
 
       // ═══════════════════════════════════════════
@@ -2063,18 +2105,47 @@
         switchTab(document.querySelector('.rp-tab'), 'reasoning');
 
         try {
-          const r = await fetch(`/api/analyze`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
+          let result;
 
-          if (!r.ok) {
-            const err = await r.json().catch(() => ({ detail: 'Server error' }));
-            throw new Error(err.detail || `HTTP ${r.status}`);
+          if (userAddress && window.ethereum) {
+            // New Pure Web3 Flow: Chat directly with OpenGradient
+            const ogPrompt = `Analyze the ${currentPair} trading pair for a ${payload.timeframe} timeframe with ${payload.risk} risk tolerance. Indicators: ${payload.indicators.join(', ')}. Provide a detailed JSON response for buy/sell/stable.`;
+
+            const ogResponse = await fetchWithX402('https://inference.opengradient.ai/v1/chat/completions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: 'models/gemini-1.5-flash', // Default TEE model
+                messages: [{ role: 'user', content: ogPrompt }],
+                temperature: 0.1
+              })
+            });
+
+            if (!ogResponse.ok) {
+              const err = await ogResponse.json().catch(() => ({}));
+              throw new Error(err.error?.message || `OG Error ${ogResponse.status}`);
+            }
+
+            const ogData = await ogResponse.json();
+            const rawContent = ogData.choices[0].message.content;
+
+            // Send raw content to backend for final formatting/parsing (safe fallback)
+            const r = await fetch(`/api/analyze`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ...payload, raw_content: rawContent, user_address: userAddress }),
+            });
+            result = await r.json();
+          } else {
+            // Legacy/Demo fallback
+            const r = await fetch(`/api/analyze`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+            result = await r.json();
           }
 
-          const result = await r.json();
           lastResult = result;
           renderResult(result);
           addToHistory(result);
@@ -2082,13 +2153,12 @@
 
         } catch (e) {
           errBanner.style.display = 'block';
-          errBanner.textContent = `⚠️ ${e.message}. Make sure the Python backend is running.`;
+          errBanner.textContent = `⚠️ ${e.message}`;
           showToast('❌ ' + e.message, 'error');
           document.getElementById('tab-reasoning').innerHTML = `
       <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--red);padding:12px;background:rgba(255,69,96,0.05);border:1px solid rgba(255,69,96,0.15);border-radius:8px;">
         ⚠️ ${e.message}<br><br>
-        <span style="color:var(--text2);">Start the backend:<br>
-        <code style="color:var(--cyan2);">cd backend && python app.py</code></span>
+        <span style="color:var(--text2);">Ensure your MetaMask is on Base Sepolia and you have $OPG tokens.</span>
       </div>
     `;
         }
