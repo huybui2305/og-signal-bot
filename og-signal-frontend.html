@@ -1708,15 +1708,17 @@
         { sym: 'LINK', name: 'Chainlink', icon: '⬡', color: '#375bd2' },
       ];
 
+      let userAddress = null;
+
       async function connectWallet() {
         if (window.ethereum) {
           try {
             const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
             if (accounts.length > 0) {
-              const addr = accounts[0];
-              document.getElementById('walletAddr').innerHTML = `🟢 ${addr.slice(0, 6)}...${addr.slice(-4)}`;
+              userAddress = accounts[0];
+              document.getElementById('walletAddr').innerHTML = `🟢 ${userAddress.slice(0, 6)}...${userAddress.slice(-4)}`;
               showToast('Wallet connected', 'success');
-              updateBalanceDisplay(addr);
+              updateBalanceDisplay(userAddress);
             }
           } catch (e) {
             showToast('Connection failed', 'error');
