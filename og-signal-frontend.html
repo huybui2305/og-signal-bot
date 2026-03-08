@@ -2189,17 +2189,17 @@
         const pill = document.getElementById('sigPill');
         pill.className = `sig-pill ${r.signal}`;
         document.getElementById('sigArrow').textContent = r.signal === 'BUY' ? '↑' : r.signal === 'SELL' ? '↓' : '→';
-        document.getElementById('sigWord').textContent = r.signal;
+        document.getElementById('sigWord').textContent = r.strength;
 
         // Main text
-        document.getElementById('sigMain').textContent = r.strength;
+        document.getElementById('sigMain').textContent = r.signal;
 
         // Detail
         const explorerUrl = r.on_chain_verified ? `https://explorer.opengradient.ai/tx/${r.tx_hash}` : '#';
         document.getElementById('sigDetail').innerHTML = `
     <span>🎯 Target: <strong>${r.target}</strong></span>
     <span>🛡 Stop: <strong>${r.stop_loss}</strong></span>
-    <span>📊 ${r.model_used.includes('demo') ? 'Demo' : 'OG'} · ${r.inference_mode}</span>
+    <span>📊 ${r.model_used.toLowerCase().includes('demo') ? 'Demo' : 'OG'} · ${r.inference_mode}</span>
     ${r.on_chain_verified ? `<span>🔍 <a href="${explorerUrl}" target="_blank" style="color:var(--cyan);text-decoration:none;">View on Explorer ↗</a></span>` : ''}
   `;
 
